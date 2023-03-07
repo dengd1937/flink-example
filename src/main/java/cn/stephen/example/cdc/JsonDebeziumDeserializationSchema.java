@@ -82,26 +82,17 @@ public class JsonDebeziumDeserializationSchema implements DebeziumDeserializatio
 
         Envelope.Operation operation = Envelope.operationFor(record);
         Struct value = (Struct) record.value();
-        if (operation == Envelope.Operation.CREATE || operation == Envelope.Operation.READ) {
-            // insert
-            changes.put("type", "insert");
-            changes.put("data", getRowMap(value.getStruct(Envelope.FieldName.AFTER)));
-        } else if (operation == Envelope.Operation.UPDATE) {
-            // update
-            changes.put("type", "update");
+        changes.put("op", operation.code());
+        if (operation == Envelope.Operation.CREATE || operation == Envelope.Operation.READ || operation == Envelope.Operation.UPDATE) {
+            // insert/update
             changes.put("data", getRowMap(value.getStruct(Envelope.FieldName.AFTER)));
         } else if (operation == Envelope.Operation.DELETE) {
             // delete
-            changes.put("type", "delete");
             changes.put("data", getRowMap(value.getStruct(Envelope.FieldName.BEFORE)));
         }
 
         Struct source = value.getStruct(Envelope.FieldName.SOURCE);
-        String db = source.getString("db");
-        String table = source.getString("table");
-        changes.put("table", source.getString("connector").equals("sqlserver")
-                ? StringUtils.join(db, ".", source.getString("schema"), ".", table)
-                : StringUtils.join(db, ".", table));
+        changes.put("table", source.getString("table"));
         changes.put("ts", source.getInt64("ts_ms"));
 
         out.collect(JSON.toJSONString(changes));

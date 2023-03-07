@@ -4,16 +4,25 @@ import cn.stephen.example.cdc.JsonDebeziumDeserializationSchema;
 import cn.stephen.example.datagen.FakeSource;
 import com.ververica.cdc.connectors.mysql.source.MySqlSource;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.api.java.utils.ParameterTool;
+import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.connector.base.DeliveryGuarantee;
+import org.apache.flink.connector.file.sink.FileSink;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.formats.parquet.avro.AvroParquetWriters;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.filesystem.OutputFileConfig;
+import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.DateTimeBucketAssigner;
+import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.DefaultRollingPolicy;
+import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.OnCheckpointRollingPolicy;
 
 import java.time.Duration;
 import java.util.Properties;
@@ -25,9 +34,14 @@ public class StreamEnvContext {
     }
 
     /* ===================================================Source==================================================== */
-    public static DataStreamSource<String> getFakeSource (
+    public static DataStreamSource<String> getFakeSource(
             StreamExecutionEnvironment env) {
         return env.addSource(new FakeSource());
+    }
+
+    public static DataStreamSource<String> getIntervalFakeSource(
+            StreamExecutionEnvironment env, Long emitInterval) {
+        return env.addSource(new FakeSource(emitInterval));
     }
 
     public static DataStreamSource<String> getKafkaNoWatermarksSource(
@@ -103,7 +117,7 @@ public class StreamEnvContext {
         String topic = fromArgs.getRequired(StreamSinkConfig.KAFKA_REQUIRED_TOPIC);
 
         Properties sinkPro = new Properties();
-        sinkPro.put("transaction.timeout.ms", 15*60*1000);
+        sinkPro.put("transaction.timeout.ms", 15 * 60 * 1000);
 
         return KafkaSink.<String>builder()
                 .setBootstrapServers(server)
@@ -118,7 +132,60 @@ public class StreamEnvContext {
                 .build();
     }
 
+    public static Sink<String> getRowFormatFileSink(String[] args) {
+        ParameterTool fromArgs = ParameterTool.fromArgs(args);
+        String filePath = fromArgs.getRequired(StreamSinkConfig.FILE_REQUIRED_PATH);
+        long rolloverInterval = Long.parseLong(
+                fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_ROLLOVER_SECOND_INTERVAL, "60"));
+        long inactiveInterval = Long.parseLong(
+                fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_INACTIVE_SECOND_INTERVAL, "10"));
+        long maxPartSize = Long.parseLong(
+                fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_MAX_PART_SIZE, "134217728"));
+        long bucketCheckInterval = Long.parseLong(
+                fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_BUCKET_CHECK_MILLI_INTERVAL, "60000")
+        );
+        String outfilePrefix = fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_OUT_FILE_PREFIX, "part");
+        String outfileSuffix = fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_OUT_FILE_SUFFIX, ".txt");
+        String bucketFormat = fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_BUCKET_FORMAT, "yyyyMMddHH");
 
 
+        return FileSink.forRowFormat(new Path(filePath), new SimpleStringEncoder<String>("UTF-8"))
+                .withRollingPolicy(
+                        DefaultRollingPolicy.builder()
+                                .withRolloverInterval(Duration.ofSeconds(rolloverInterval))
+                                .withInactivityInterval(Duration.ofSeconds(inactiveInterval))
+                                .withMaxPartSize(new MemorySize(maxPartSize))
+                                .build()
+                )
+                .withBucketCheckInterval(bucketCheckInterval)
+                .withOutputFileConfig(new OutputFileConfig(outfilePrefix, outfileSuffix))
+                .withBucketAssigner(new DateTimeBucketAssigner<>(bucketFormat))
+                .build();
+    }
+
+    public static <T> Sink<T> getParquetFormatFileSink(String[] args, Class<T> obj) {
+        ParameterTool fromArgs = ParameterTool.fromArgs(args);
+        String filePath = fromArgs.getRequired(StreamSinkConfig.FILE_REQUIRED_PATH);
+        String outfilePrefix = fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_OUT_FILE_PREFIX, "part");
+        String outfileSuffix = fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_OUT_FILE_SUFFIX, ".parquet");
+        String bucketFormat = fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_BUCKET_FORMAT, "yyyyMMddHH");
+
+
+        return FileSink.forBulkFormat(new Path(filePath), AvroParquetWriters.forReflectRecord(obj))
+                .withRollingPolicy(OnCheckpointRollingPolicy.build())
+                .withBucketAssigner(new DateTimeBucketAssigner<>(bucketFormat))
+                .withOutputFileConfig(
+                        OutputFileConfig.builder()
+                                .withPartPrefix(outfilePrefix)
+                                .withPartSuffix(outfileSuffix)
+                                .build()
+                )
+                .build();
+    }
+
+    public static <T> Sink<T> getOrcFormatFileSink(String[] args) {
+
+        return null;
+    }
 
 }
