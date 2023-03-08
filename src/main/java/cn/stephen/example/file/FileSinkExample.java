@@ -31,13 +31,10 @@ public class FileSinkExample {
 
 //        Sink<Course> fileSink = StreamEnvContext.getParquetFormatFileSink(args, Course.class);
 
+        // TODO bean生成schema
         String schema = "struct<_col0:int,_col1:string,_col2:int,_col3:string,_col4:string,_col5:double,_col6:string,_col7:int,_col8:bigint>";
-        FileSink<Course> fileSink = FileSink.forBulkFormat(new Path("data/out"),
-                        new OrcBulkWriterFactory<>(new CourseVectorizer(schema))
-                ).withRollingPolicy(OnCheckpointRollingPolicy.build())
-                .withBucketAssigner(new DateTimeBucketAssigner<>("yyyyMMddHH"))
-                .withOutputFileConfig(new OutputFileConfig("part", ".orc"))
-                .build();
+        Sink<Course> fileSink = StreamEnvContext.getOrcFormatFileSink(args, new CourseVectorizer(schema));
+
         fakeSource.map(new MapFunction<String, Course>() {
             @Override
             public Course map(String value) throws Exception {

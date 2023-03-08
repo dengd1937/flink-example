@@ -17,6 +17,8 @@ import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.formats.parquet.avro.AvroParquetWriters;
+import org.apache.flink.orc.vector.Vectorizer;
+import org.apache.flink.orc.writer.OrcBulkWriterFactory;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.filesystem.OutputFileConfig;
@@ -183,9 +185,23 @@ public class StreamEnvContext {
                 .build();
     }
 
-    public static <T> Sink<T> getOrcFormatFileSink(String[] args) {
+    public static <T> Sink<T> getOrcFormatFileSink(String[] args, Vectorizer<T> vectorizer) {
+        ParameterTool fromArgs = ParameterTool.fromArgs(args);
+        String filePath = fromArgs.getRequired(StreamSinkConfig.FILE_REQUIRED_PATH);
+        String outfilePrefix = fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_OUT_FILE_PREFIX, "part");
+        String outfileSuffix = fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_OUT_FILE_SUFFIX, ".orc");
+        String bucketFormat = fromArgs.get(StreamSinkConfig.FILE_OPTIONAL_BUCKET_FORMAT, "yyyyMMddHH");
 
-        return null;
+        return FileSink.forBulkFormat(new Path(filePath), new OrcBulkWriterFactory<>(vectorizer))
+                .withRollingPolicy(OnCheckpointRollingPolicy.build())
+                .withBucketAssigner(new DateTimeBucketAssigner<>(bucketFormat))
+                .withOutputFileConfig(
+                        OutputFileConfig.builder()
+                                .withPartPrefix(outfilePrefix)
+                                .withPartSuffix(outfileSuffix)
+                                .build()
+                )
+                .build();
     }
 
 }
