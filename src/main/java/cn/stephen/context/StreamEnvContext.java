@@ -11,6 +11,10 @@ import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.file.sink.FileSink;
+import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
+import org.apache.flink.connector.jdbc.JdbcExecutionOptions;
+import org.apache.flink.connector.jdbc.JdbcSink;
+import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
@@ -21,6 +25,7 @@ import org.apache.flink.orc.vector.Vectorizer;
 import org.apache.flink.orc.writer.OrcBulkWriterFactory;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.sink.filesystem.OutputFileConfig;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.DateTimeBucketAssigner;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.DefaultRollingPolicy;
@@ -202,6 +207,40 @@ public class StreamEnvContext {
                                 .build()
                 )
                 .build();
+    }
+
+    public static <T> SinkFunction<T> getJdbcSink(String[] args, String sql, JdbcStatementBuilder<T> statementBuilder) {
+        ParameterTool fromArgs = ParameterTool.fromArgs(args);
+        String url = fromArgs.getRequired(StreamSinkConfig.JDBC_REQUIRED_URL);
+        String driverName = fromArgs.getRequired(StreamSinkConfig.JDBC_REQUIRED_DRIVER_NAME);
+        String username = fromArgs.getRequired(StreamSinkConfig.JDBC_REQUIRED_USERNAME);
+        String password = fromArgs.getRequired(StreamSinkConfig.JDBC_REQUIRED_PASSWORD);
+        int batchIntervalMs = Integer.parseInt(
+                fromArgs.get(StreamSinkConfig.JDBC_OPTIONAL_BATCH_INTERVAL_MS, "100")
+        );
+        int batchSize= Integer.parseInt(
+                fromArgs.get(StreamSinkConfig.JDBC_OPTIONAL_BATCH_SIZE, "1000")
+        );
+        int maxRetries= Integer.parseInt(
+                fromArgs.get(StreamSinkConfig.JDBC_OPTIONAL_MAX_RETRIES, "3")
+        );
+
+
+        return JdbcSink.sink(
+                sql,
+                statementBuilder,
+                JdbcExecutionOptions.builder()
+                        .withBatchIntervalMs(batchIntervalMs)
+                        .withBatchSize(batchSize)
+                        .withMaxRetries(maxRetries)
+                        .build(),
+                new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
+                        .withUrl(url)
+                        .withDriverName(driverName)
+                        .withUsername(username)
+                        .withPassword(password)
+                        .build()
+        );
     }
 
 }

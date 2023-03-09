@@ -20,5 +20,16 @@ public class StreamSinkConfig {
     public static final String FILE_OPTIONAL_OUT_FILE_SUFFIX = "file_sink_out_file_suffix";
     public static final String FILE_OPTIONAL_BUCKET_FORMAT = "file_sink_bucket_format";
 
+    /*
+     * Jdbc Sink
+     */
+    public static final String JDBC_REQUIRED_URL = "jdbc_sink_url";
+    public static final String JDBC_REQUIRED_DRIVER_NAME = "jdbc_sink_driver_name";
+    public static final String JDBC_REQUIRED_USERNAME = "jdbc_sink_username";
+    public static final String JDBC_REQUIRED_PASSWORD = "jdbc_sink_password";
+    public static final String JDBC_OPTIONAL_BATCH_INTERVAL_MS = "jdbc_sink_batch_interval_ms";
+    public static final String JDBC_OPTIONAL_BATCH_SIZE = "jdbc_sink_batch_size";
+    public static final String JDBC_OPTIONAL_MAX_RETRIES = "jdbc_sink_max_retries";
+
 
 }
