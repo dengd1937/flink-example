@@ -2,6 +2,7 @@ package cn.stephen.context;
 
 import cn.stephen.example.cdc.JsonDebeziumDeserializationSchema;
 import cn.stephen.example.datagen.FakeSource;
+import com.mysql.cj.jdbc.MysqlXADataSource;
 import com.ververica.cdc.connectors.mysql.source.MySqlSource;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringEncoder;
@@ -11,10 +12,7 @@ import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.file.sink.FileSink;
-import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
-import org.apache.flink.connector.jdbc.JdbcExecutionOptions;
-import org.apache.flink.connector.jdbc.JdbcSink;
-import org.apache.flink.connector.jdbc.JdbcStatementBuilder;
+import org.apache.flink.connector.jdbc.*;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
@@ -218,10 +216,10 @@ public class StreamEnvContext {
         int batchIntervalMs = Integer.parseInt(
                 fromArgs.get(StreamSinkConfig.JDBC_OPTIONAL_BATCH_INTERVAL_MS, "100")
         );
-        int batchSize= Integer.parseInt(
+        int batchSize = Integer.parseInt(
                 fromArgs.get(StreamSinkConfig.JDBC_OPTIONAL_BATCH_SIZE, "1000")
         );
-        int maxRetries= Integer.parseInt(
+        int maxRetries = Integer.parseInt(
                 fromArgs.get(StreamSinkConfig.JDBC_OPTIONAL_MAX_RETRIES, "3")
         );
 
@@ -240,6 +238,41 @@ public class StreamEnvContext {
                         .withUsername(username)
                         .withPassword(password)
                         .build()
+        );
+    }
+
+    public static <T> SinkFunction<T> getMySQLExactlyOnceSink(String[] args, String sql, JdbcStatementBuilder<T> statementBuilder) {
+        ParameterTool fromArgs = ParameterTool.fromArgs(args);
+        String url = fromArgs.getRequired(StreamSinkConfig.JDBC_REQUIRED_URL);
+        String username = fromArgs.getRequired(StreamSinkConfig.JDBC_REQUIRED_USERNAME);
+        String password = fromArgs.getRequired(StreamSinkConfig.JDBC_REQUIRED_PASSWORD);
+        int batchIntervalMs = Integer.parseInt(
+                fromArgs.get(StreamSinkConfig.JDBC_OPTIONAL_BATCH_INTERVAL_MS, "100")
+        );
+        int batchSize = Integer.parseInt(
+                fromArgs.get(StreamSinkConfig.JDBC_OPTIONAL_BATCH_SIZE, "1000")
+        );
+
+        return JdbcSink.exactlyOnceSink(
+                sql,
+                statementBuilder,
+                JdbcExecutionOptions.builder()
+                        .withBatchIntervalMs(batchIntervalMs)
+                        .withBatchSize(batchSize)
+                        .withMaxRetries(0)
+                        .build(),
+                JdbcExactlyOnceOptions.builder()
+                        .withTransactionPerConnection(true)
+                        .build(),
+                () -> {
+                    // create a driver-specific XA DataSource
+                    // The following example is for derby
+                    MysqlXADataSource ds = new MysqlXADataSource();
+                    ds.setUrl(url);
+                    ds.setUser(username);
+                    ds.setPassword(password);
+                    return ds;
+                }
         );
     }
 

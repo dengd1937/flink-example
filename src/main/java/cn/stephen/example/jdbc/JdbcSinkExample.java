@@ -17,15 +17,18 @@ public class JdbcSinkExample {
         env.enableCheckpointing(5000);
         env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 1000));
 
-        String sql = "insert into mydb.users(id, name, age) values(?, ?, ?)";
-        SinkFunction<String> jdbcSink = StreamEnvContext.getJdbcSink(args, sql, (preparedStatement, s) -> {
+        String sql = "insert into mydb.users(id, name, age) values(?, ?, ?) on duplicate key update name=?,age=?";
+        SinkFunction<String> jdbcSink = StreamEnvContext.getMySQLExactlyOnceSink(args, sql, (preparedStatement, s) -> {
             String[] fields = s.split(",");
             preparedStatement.setLong(1, Long.parseLong(fields[0]));
             preparedStatement.setString(2, fields[1]);
             preparedStatement.setInt(3, Integer.parseInt(fields[2]));
+            preparedStatement.setString(4, fields[1]);
+            preparedStatement.setInt(5, Integer.parseInt(fields[2]));
         });
+
         env.socketTextStream("hadoop001", 9527)
-                        .addSink(jdbcSink);
+                .addSink(jdbcSink);
 
 
         StreamEnvContext.jobExecute(env);
